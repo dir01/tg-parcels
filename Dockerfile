@@ -7,4 +7,4 @@ ADD . .
 RUN CGO_ENABLED=1 make install-dev
 RUN make build
 
-CMD bin/service
+CMD bin/bot
