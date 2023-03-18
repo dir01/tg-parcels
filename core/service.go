@@ -72,6 +72,8 @@ type TrackingUpdate struct {
 func (s *ServiceImpl) Start(ctx context.Context) {
 	s.logger.Debug("service starting")
 	go func() {
+		s.poll(ctx)
+
 		t := time.NewTicker(s.pollingDuration)
 		for {
 			select {

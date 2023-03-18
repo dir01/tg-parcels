@@ -12,14 +12,17 @@ build: # Build the service
 install-dev: # Install development dependencies
 	go install github.com/rubenv/sql-migrate/...@latest
 
+SQL_MIGRATE_CONFIG ?= ./db/dbconfig.yml
+SQL_MIGRATE_ENV ?= development
+
 new-migration: # Create a new migration
-	sql-migrate new -config ./db/dbconfig.yml $(shell bash -c 'read -p "Enter migration name: " name; echo $$name')
+	sql-migrate new -config "${SQL_MIGRATE_CONFIG}" $(shell bash -c 'read -p "Enter migration name: " name; echo $$name')
 
 migrate: # Migrate the database to the latest version
-	sql-migrate up -config ./db/dbconfig.yml
+	sql-migrate up -config "${SQL_MIGRATE_CONFIG}" -env "${SQL_MIGRATE_ENV}"
 .PHONY: migrate
 
 migrate-down: # Rollback the database one version down
-	sql-migrate down -config ./db/dbconfig.yml
+	sql-migrate down -config "${SQL_MIGRATE_CONFIG}" -env "${SQL_MIGRATE_ENV}"
 .PHONY: migrate-down
 
