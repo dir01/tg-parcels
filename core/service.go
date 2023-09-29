@@ -18,13 +18,13 @@ type Service interface {
 
 func NewService(
 	storage Storage,
-	parcelsServiceURL string,
+	parcelsAPIURL string,
 	pollingDuration time.Duration,
 	logger *zap.Logger,
 ) *ServiceImpl {
 	s := &ServiceImpl{
 		storage:         storage,
-		parcelsService:  &ParcelsService{serviceURL: parcelsServiceURL},
+		parcelsAPI:      &ParcelsAPI{apiURL: parcelsAPIURL},
 		pollingDuration: pollingDuration,
 		logger:          logger,
 		updatesChan:     make(chan TrackingUpdate),
@@ -36,7 +36,7 @@ func NewService(
 type ServiceImpl struct {
 	storage         Storage
 	pollingDuration time.Duration
-	parcelsService  *ParcelsService
+	parcelsAPI      *ParcelsAPI
 	logger          *zap.Logger
 	updatesChan     chan TrackingUpdate
 }
@@ -123,13 +123,13 @@ func (s *ServiceImpl) fetchTrackingInfo(ctx context.Context, tracking *Tracking)
 	}
 	s.logger.Debug("fetching tracking info", zapFields...)
 
-	trackingInfos, err := s.parcelsService.GetTrackingInfo(ctx, tracking.TrackingNumber)
+	fetchedTrackingInfos, err := s.parcelsAPI.GetTrackingInfo(ctx, tracking.TrackingNumber)
 	if err != nil {
 		s.logger.Error("failed to fetch tracking info", append(zapFields, zaperr.ToField(err))...)
 		return
 	}
 
-	trackingUpdate := s.getTrackingUpdate(tracking.TrackingInfos, trackingInfos)
+	trackingUpdate := s.getTrackingUpdate(tracking.TrackingInfos, fetchedTrackingInfos)
 	if trackingUpdate == nil {
 		s.logger.Debug("tracking info is up to date", zapFields...)
 		return
@@ -137,9 +137,9 @@ func (s *ServiceImpl) fetchTrackingInfo(ctx context.Context, tracking *Tracking)
 
 	s.logger.Debug("tracking infos changed", append([]zap.Field{
 		zap.Any("existing_tracking_infos", tracking.TrackingInfos),
-		zap.Any("fetched_tracking_infos", trackingInfos),
+		zap.Any("fetched_tracking_infos", fetchedTrackingInfos),
 	}, zapFields...)...)
-	tracking.TrackingInfos = trackingInfos
+	tracking.TrackingInfos = fetchedTrackingInfos
 	now := time.Now()
 	tracking.LastPolledAt = &now
 	if _, err := s.storage.SaveTracking(ctx, tracking); err != nil {

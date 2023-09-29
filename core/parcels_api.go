@@ -11,12 +11,12 @@ import (
 	"go.uber.org/zap"
 )
 
-type ParcelsService struct {
-	serviceURL string
+type ParcelsAPI struct {
+	apiURL string
 }
 
-func (s *ParcelsService) GetTrackingInfo(ctx context.Context, trackingNumber string) ([]*parcels_api.TrackingInfo, error) {
-	url := s.serviceURL + "/trackingInfo/" + "?trackingNumber=" + trackingNumber
+func (api *ParcelsAPI) GetTrackingInfo(ctx context.Context, trackingNumber string) ([]*parcels_api.TrackingInfo, error) {
+	url := api.apiURL + "/trackingInfo/" + "?trackingNumber=" + trackingNumber
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

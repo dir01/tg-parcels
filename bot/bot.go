@@ -71,7 +71,7 @@ func (b *Bot) Start(ctx context.Context) {
 				b.logger.Debug("context cancelled, stopping updates worker")
 				return
 			case update := <-b.service.Updates():
-				b.onTrackingUpdate(update)
+				b.notifyUserOfTrackingUpdate(update)
 			}
 		}
 	}()
@@ -90,7 +90,7 @@ func (b *Bot) Start(ctx context.Context) {
 	b.bot.Start()
 }
 
-func (b *Bot) onTrackingUpdate(update core.TrackingUpdate) {
+func (b *Bot) notifyUserOfTrackingUpdate(update core.TrackingUpdate) {
 	fields := []zap.Field{
 		zap.Any("update", update),
 	}
