@@ -41,10 +41,6 @@ type ServiceImpl struct {
 	updatesChan     chan TrackingUpdate
 }
 
-func (s *ServiceImpl) Updates() chan TrackingUpdate {
-	return s.updatesChan
-}
-
 type Storage interface {
 	SaveTracking(ctx context.Context, tracking *Tracking) (*Tracking, error)
 	GetTrackingsLastPolledBefore(ctx context.Context, t time.Time) ([]*Tracking, error)
@@ -67,6 +63,11 @@ type TrackingUpdate struct {
 	DisplayName       string
 	NewTrackingInfos  []*parcels_api.TrackingInfo
 	NewTrackingEvents []*parcels_api.TrackingEvent
+	TrackingErrors    []error
+}
+
+func (s *ServiceImpl) Updates() chan TrackingUpdate {
+	return s.updatesChan
 }
 
 func (s *ServiceImpl) Start(ctx context.Context) {
@@ -107,7 +108,7 @@ func (s *ServiceImpl) Track(ctx context.Context, userID int64, trackingNumber st
 	if tracking, err := s.storage.SaveTracking(ctx, tracking); err == nil {
 		zapFields := append(zapFields, zap.Int64("tracking_id", tracking.ID), zaperr.ToField(err))
 		s.logger.Info("tracking added", zapFields...)
-		go s.fetchTrackingInfo(ctx, tracking)
+		go s.fetchTrackingInfo(ctx, tracking, true)
 		return nil
 	} else {
 		return zaperr.Wrap(err, "failed to add tracking", zapFields...)
@@ -117,7 +118,7 @@ func (s *ServiceImpl) Track(ctx context.Context, userID int64, trackingNumber st
 // fetchTrackingInfo fetches the tracking info from parcels service
 // and updates the tracking in the storage if required
 // it also publishes any updates to the user
-func (s *ServiceImpl) fetchTrackingInfo(ctx context.Context, tracking *Tracking) {
+func (s *ServiceImpl) fetchTrackingInfo(ctx context.Context, tracking *Tracking, reportErrors bool) {
 	zapFields := []zap.Field{
 		zap.Any("tracking", tracking),
 	}
@@ -126,6 +127,14 @@ func (s *ServiceImpl) fetchTrackingInfo(ctx context.Context, tracking *Tracking)
 	fetchedTrackingInfos, err := s.parcelsAPI.GetTrackingInfo(ctx, tracking.TrackingNumber)
 	if err != nil {
 		s.logger.Error("failed to fetch tracking info", append(zapFields, zaperr.ToField(err))...)
+		if reportErrors {
+			s.updatesChan <- TrackingUpdate{
+				TrackingNumber: tracking.TrackingNumber,
+				UserID:         tracking.UserID,
+				DisplayName:    tracking.DisplayName,
+				TrackingErrors: []error{err},
+			}
+		}
 		return
 	}
 
@@ -164,7 +173,7 @@ func (s *ServiceImpl) poll(ctx context.Context) {
 	}
 	s.logger.Info("polling", zap.Int("trackings_count", len(trackings)))
 	for _, tracking := range trackings {
-		s.fetchTrackingInfo(ctx, tracking)
+		s.fetchTrackingInfo(ctx, tracking, false)
 	}
 }
 

@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -10,6 +11,8 @@ import (
 	"github.com/hori-ryota/zaperr"
 	"go.uber.org/zap"
 )
+
+var ErrNotFound = errors.New("not found")
 
 type ParcelsAPI struct {
 	apiURL string
@@ -26,6 +29,10 @@ func (api *ParcelsAPI) GetTrackingInfo(ctx context.Context, trackingNumber strin
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
 	}
 
 	body, err := io.ReadAll(resp.Body)
