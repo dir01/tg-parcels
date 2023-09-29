@@ -63,7 +63,7 @@ type TrackingUpdate struct {
 	DisplayName       string
 	NewTrackingInfos  []*parcels_api.TrackingInfo
 	NewTrackingEvents []*parcels_api.TrackingEvent
-	TrackingErrors    []error
+	TrackingError     error
 }
 
 func (s *ServiceImpl) Updates() chan TrackingUpdate {
@@ -132,7 +132,7 @@ func (s *ServiceImpl) fetchTrackingInfo(ctx context.Context, tracking *Tracking,
 				TrackingNumber: tracking.TrackingNumber,
 				UserID:         tracking.UserID,
 				DisplayName:    tracking.DisplayName,
-				TrackingErrors: []error{err},
+				TrackingError:  err,
 			}
 		}
 		return

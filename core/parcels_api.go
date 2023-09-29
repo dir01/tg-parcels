@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var ErrNotFound = errors.New("not found")
+var ErrNoTrackingInfo = errors.New("not found")
 
 type ParcelsAPI struct {
 	apiURL string
@@ -32,7 +32,7 @@ func (api *ParcelsAPI) GetTrackingInfo(ctx context.Context, trackingNumber strin
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, ErrNotFound
+		return nil, ErrNoTrackingInfo
 	}
 
 	body, err := io.ReadAll(resp.Body)

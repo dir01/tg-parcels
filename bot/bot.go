@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -103,6 +104,15 @@ func (b *Bot) notifyUserOfTrackingUpdate(update core.TrackingUpdate) {
 	}
 	if chatID == 0 {
 		b.logger.Debug("no chat id found for user", fields...)
+		return
+	}
+
+	if errors.Is(update.TrackingError, core.ErrNoTrackingInfo) {
+		msg := "Tracking info not found at the moment, but we will keep trying to find it and will update of any changes"
+		if _, err := b.bot.Send(tele.ChatID(chatID), msg); err != nil {
+			zapFields := append(fields, zap.Int64("chat_id", chatID))
+			b.logger.Error("failed to send message", zapFields...)
+		}
 		return
 	}
 
