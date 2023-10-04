@@ -78,7 +78,44 @@ func (s *Storage) SaveTracking(ctx context.Context, tracking *core.Tracking) (*c
 	return tracking, nil
 }
 
-func (s *Storage) GetTrackingsLastPolledBefore(ctx context.Context, time time.Time) ([]*core.Tracking, error) {
+func (s *Storage) GetTracking(ctx context.Context, userID int64, trackingNumber string) (*core.Tracking, error) {
+	var dbTracking dbStruct
+	err := s.db.GetContext(ctx, &dbTracking, `
+		SELECT * FROM trackings WHERE user_id = ? AND tracking_number = ?`, userID, trackingNumber,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tracking, err := dbTracking.toBusinessStruct()
+	if err != nil {
+		return nil, err
+	}
+
+	return tracking, nil
+}
+
+func (s *Storage) ListTrackingsByUserID(ctx context.Context, userID int64) ([]*core.Tracking, error) {
+	var dbTrackings []*dbStruct
+	err := s.db.SelectContext(ctx, &dbTrackings, `
+		SELECT * FROM trackings WHERE user_id = ?`, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var trackings []*core.Tracking
+	for _, dbTracking := range dbTrackings {
+		tracking, err := dbTracking.toBusinessStruct()
+		if err != nil {
+			return nil, err
+		}
+		trackings = append(trackings, tracking)
+	}
+	return trackings, nil
+}
+
+func (s *Storage) ListTrackingsLastPolledBefore(ctx context.Context, time time.Time) ([]*core.Tracking, error) {
 	var dbTrackings []*dbStruct
 	err := s.db.SelectContext(ctx, &dbTrackings, `
 		SELECT * FROM trackings WHERE last_polled_at is NULL OR last_polled_at < ?`, time,
@@ -96,4 +133,23 @@ func (s *Storage) GetTrackingsLastPolledBefore(ctx context.Context, time time.Ti
 		trackings = append(trackings, tracking)
 	}
 	return trackings, nil
+}
+
+func (s *Storage) DeleteTracking(ctx context.Context, userID int64, trackingNumber string) error {
+	query := `
+		DELETE FROM trackings WHERE user_id = ? AND tracking_number = ?`
+	fields := []zap.Field{
+		zap.String("query", query),
+		zap.Any("userID", userID),
+		zap.Any("trackingNumber", trackingNumber),
+	}
+
+	s.writeAccessMutex.Lock()
+	defer s.writeAccessMutex.Unlock()
+
+	if _, err := s.db.ExecContext(ctx, query, userID, trackingNumber); err != nil {
+		return zaperr.Wrap(err, "failed to execute", fields...)
+	}
+
+	return nil
 }

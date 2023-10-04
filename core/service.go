@@ -11,9 +11,12 @@ import (
 )
 
 type Service interface {
-	Track(ctx context.Context, userID int64, trackingNumber string, displayName string) error
 	Start(ctx context.Context)
 	Updates() chan TrackingUpdate
+	Track(ctx context.Context, userID int64, trackingNumber string, displayName string) error
+	GetTracking(ctx context.Context, userID int64, trackingNumber string) (*Tracking, error)
+	ListTrackings(ctx context.Context, userID int64) ([]*Tracking, error)
+	DeleteTracking(ctx context.Context, userID int64, trackingNumber string) error
 }
 
 func NewService(
@@ -43,7 +46,10 @@ type ServiceImpl struct {
 
 type Storage interface {
 	SaveTracking(ctx context.Context, tracking *Tracking) (*Tracking, error)
-	GetTrackingsLastPolledBefore(ctx context.Context, t time.Time) ([]*Tracking, error)
+	GetTracking(ctx context.Context, userID int64, trackingNumber string) (*Tracking, error)
+	ListTrackingsLastPolledBefore(ctx context.Context, t time.Time) ([]*Tracking, error)
+	ListTrackingsByUserID(ctx context.Context, userID int64) ([]*Tracking, error)
+	DeleteTracking(ctx context.Context, userID int64, trackingNumber string) error
 }
 
 var ErrTrackingExists = errors.New("tracking exists")
@@ -115,6 +121,18 @@ func (s *ServiceImpl) Track(ctx context.Context, userID int64, trackingNumber st
 	}
 }
 
+func (s *ServiceImpl) GetTracking(ctx context.Context, userID int64, trackingNumber string) (*Tracking, error) {
+	return s.storage.GetTracking(ctx, userID, trackingNumber)
+}
+
+func (s *ServiceImpl) ListTrackings(ctx context.Context, userID int64) ([]*Tracking, error) {
+	return s.storage.ListTrackingsByUserID(ctx, userID)
+}
+
+func (s *ServiceImpl) DeleteTracking(ctx context.Context, userID int64, trackingNumber string) error {
+	return s.storage.DeleteTracking(ctx, userID, trackingNumber)
+}
+
 // fetchTrackingInfo fetches the tracking info from parcels service
 // and updates the tracking in the storage if required
 // it also publishes any updates to the user
@@ -166,7 +184,7 @@ func (s *ServiceImpl) fetchTrackingInfo(ctx context.Context, tracking *Tracking,
 // poll polls all trackings that were last polled before the polling duration
 func (s *ServiceImpl) poll(ctx context.Context) {
 	s.logger.Debug("polling")
-	trackings, err := s.storage.GetTrackingsLastPolledBefore(ctx, time.Now().Add(-s.pollingDuration))
+	trackings, err := s.storage.ListTrackingsLastPolledBefore(ctx, time.Now().Add(-s.pollingDuration))
 	if err != nil {
 		s.logger.Error("polling failed", zaperr.ToField(err))
 		return

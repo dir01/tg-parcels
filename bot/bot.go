@@ -2,9 +2,9 @@ package bot
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dir01/parcels/parcels_api"
 	"strings"
 	"time"
 
@@ -20,7 +20,7 @@ const STOP_CMD_HELP = "/stop <tracking number> - stop receiving updates about a 
 const LIST_CMD_HELP = "/list - list all tracked parcels"
 
 var HELP = strings.Join([]string{`
-Hello, I'm a bot that can help you to track your parcels.
+Hello! I'm a bot that can help you to track your parcels.
 
 **Commands:**`,
 	TRACK_CMD_HELP,
@@ -64,6 +64,9 @@ func (b *Bot) Start(ctx context.Context) {
 	handlers.Handle("/start", b.handleHelpCmd)
 	handlers.Handle("/help", b.handleHelpCmd)
 	handlers.Handle("/track", b.handleTrackCmd)
+	handlers.Handle("/info", b.handleInfoCmd)
+	handlers.Handle("/list", b.handleListCmd)
+	handlers.Handle("/delete", b.handleDeleteCmd)
 
 	go func() {
 		for {
@@ -116,13 +119,28 @@ func (b *Bot) notifyUserOfTrackingUpdate(update core.TrackingUpdate) {
 		return
 	}
 
-	bytes, err := json.MarshalIndent(update, "", "  ")
-	if err != nil {
-		fields := append(fields, zaperr.ToField(err))
-		b.logger.Error("failed to marshal update", fields...)
+	if update.TrackingError != nil {
+		msg := "Failed to get tracking info"
+		if _, err := b.bot.Send(tele.ChatID(chatID), msg); err != nil {
+			zapFields := append(fields, zap.Int64("chat_id", chatID))
+			b.logger.Error("failed to send message", zapFields...)
+		}
 		return
 	}
-	msg := fmt.Sprintf("Parcel %s (%s) has been updated:\n%s", update.TrackingNumber, update.DisplayName, string(bytes))
+
+	title := fmt.Sprintf("<code>%s</code>", update.TrackingNumber)
+	if update.DisplayName != "" {
+		title = fmt.Sprintf("%s - %s", title, update.DisplayName)
+	}
+
+	var lines []string
+	lines = append(lines, title)
+	for _, e := range update.NewTrackingEvents {
+		l := fmt.Sprintf("%s - %s", e.Time, e.Description)
+		lines = append(lines, l)
+	}
+
+	msg := strings.Join(lines, "\n")
 
 	if _, err := b.bot.Send(tele.ChatID(chatID), msg); err != nil {
 		zapFields := append(fields, zap.Int64("chat_id", chatID))
@@ -148,6 +166,79 @@ func (b *Bot) handleTrackCmd(c tele.Context) error {
 	return nil
 }
 
+func (b *Bot) handleInfoCmd(c tele.Context) error {
+	userID := c.Message().Sender.ID
+	args := c.Args()
+	if len(args) == 0 {
+		return c.Send(INFO_CMD_HELP, tele.ModeMarkdown)
+	}
+
+	trackingNumber := args[0]
+	tracking, err := b.service.GetTracking(context.Background(), userID, trackingNumber)
+	if err != nil {
+		return c.Send("Failed to get tracking info")
+	}
+
+	title := fmt.Sprintf("<code>%s</code>", tracking.TrackingNumber)
+	if tracking.DisplayName != "" {
+		title = fmt.Sprintf("%s - %s", title, tracking.DisplayName)
+	}
+
+	lines := []string{title}
+	events := b.collectAllEvents(tracking)
+	for _, e := range events {
+		l := fmt.Sprintf("%s - %s", e.Time, e.Description)
+		lines = append(lines, l)
+	}
+
+	return c.Send(strings.Join(lines, "\n"), tele.ModeHTML)
+}
+
+func (b *Bot) handleListCmd(c tele.Context) error {
+	userID := c.Message().Sender.ID
+	trackings, err := b.service.ListTrackings(context.Background(), userID)
+	if err != nil {
+		return c.Send("Failed to list trackings")
+	}
+
+	var lines []string
+	for _, tracking := range trackings {
+		l := fmt.Sprintf("<code>%s</code>", tracking.TrackingNumber)
+		if tracking.DisplayName != "" {
+			l = fmt.Sprintf("%s - %s", l, tracking.DisplayName)
+		}
+		lines = append(lines, l)
+
+		events := b.collectAllEvents(tracking)
+		if len(events) > 0 {
+			e := events[len(events)-1]
+			l := fmt.Sprintf("%s - %s", e.Time, e.Description)
+			lines = append(lines, l)
+		}
+
+		lines = append(lines, "")
+	}
+
+	return c.Send(strings.Join(lines, "\n"), tele.ModeHTML)
+}
+
+func (b *Bot) handleDeleteCmd(c tele.Context) error {
+	args := c.Args()
+	if len(args) == 0 {
+		return c.Send("Please specify tracking number")
+	}
+
+	userID := c.Message().Sender.ID
+	trackingNumber := args[0]
+
+	if err := b.service.DeleteTracking(context.Background(), userID, trackingNumber); err == nil {
+		return c.Send("Stopped tracking " + trackingNumber)
+	} else {
+		b.logger.Error("failed to stop tracking", zaperr.ToField(err))
+	}
+	return nil
+}
+
 func (b *Bot) handleHelpCmd(c tele.Context) error {
 	return c.Send(HELP, "Markdown")
 }
@@ -169,4 +260,12 @@ func (b *Bot) saveChatIDMiddleware(next tele.HandlerFunc) tele.HandlerFunc {
 		}
 		return next(c)
 	}
+}
+
+func (b *Bot) collectAllEvents(tracking *core.Tracking) []parcels_api.TrackingEvent {
+	var events []parcels_api.TrackingEvent
+	for _, info := range tracking.TrackingInfos {
+		events = append(events, info.Events...)
+	}
+	return events
 }
