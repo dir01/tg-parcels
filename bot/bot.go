@@ -142,7 +142,7 @@ func (b *Bot) notifyUserOfTrackingUpdate(update core.TrackingUpdate) {
 
 	msg := strings.Join(lines, "\n")
 
-	if _, err := b.bot.Send(tele.ChatID(chatID), msg); err != nil {
+	if _, err := b.bot.Send(tele.ChatID(chatID), msg, tele.ModeHTML); err != nil {
 		zapFields := append(fields, zap.Int64("chat_id", chatID))
 		b.logger.Error("failed to send message", zapFields...)
 	}
